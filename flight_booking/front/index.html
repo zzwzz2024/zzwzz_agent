@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✈️ 智能机票预订系统 - Agent Skills Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Noto Sans SC', sans-serif; }
+        code, .code { font-family: 'Fira Code', 'Consolas', monospace; }
+
+        .gradient-bg { background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%); }
+        .gradient-card { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); }
+
+        .skill-card { transition: all 0.3s ease; }
+        .skill-card:hover { transform: translateY(-2px); }
+        .skill-card.active { border-color: #0ea5e9; box-shadow: 0 0 25px rgba(14, 165, 233, 0.4); }
+        .skill-card.completed { border-color: #10b981; }
+
+        .typing-cursor::after {
+            content: '▊';
+            animation: blink 0.8s infinite;
+            color: #0ea5e9;
+        }
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .log-entry { animation: slideIn 0.2s ease; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .stream-text { white-space: pre-wrap; line-height: 1.8; }
+
+        .pulse-dot { animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .plane-animation {
+            animation: fly 2s ease-in-out infinite;
+        }
+        @keyframes fly {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .copy-btn { transition: all 0.2s ease; }
+        .copy-btn:hover { transform: scale(1.05); }
+        .copy-btn.copied { background: #10b981 !important; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+
+    <!-- Header -->
+    <header class="gradient-bg border-b border-sky-400/30">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                        <span class="text-2xl plane-animation">✈️</span>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold">智能机票预订系统</h1>
+                        <p class="text-sky-100 text-xs">Agent Skills + 大模型驱动</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="backendStatus" class="px-3 py-1.5 bg-white/20 rounded-lg text-sm">
+                        <span class="inline-block w-2 h-2 bg-yellow-400 rounded-full mr-2"></span>
+                        检测中...
+                    </span>
+                    <button onclick="toggleConfig()" class="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition">
+                        ⚙️ API配置
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Config Modal -->
+    <div id="configModal" class="fixed inset-0 bg-black/70 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg border border-slate-700">
+            <div class="p-4 border-b border-slate-700 flex items-center justify-between">
+                <h3 class="text-lg font-bold">⚙️ API 配置</h3>
+                <button onclick="toggleConfig()" class="text-slate-400 hover:text-white text-xl">×</button>
+            </div>
+            <div class="p-4 space-y-4">
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">后端服务地址</label>
+                    <input type="text" id="backendUrl" value="http://localhost:8001"
+                        class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-sky-500 code">
+                </div>
+                <hr class="border-slate-700">
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">模型提供商</label>
+                    <select id="providerSelect" onchange="updateProviderDefaults()" class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-sky-500">
+                        <option value="openai">OpenAI</option>
+                        <option value="zhipu">智谱AI (GLM)</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="moonshot">Moonshot (Kimi)</option>
+                        <option value="qwen">通义千问</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">API Base URL</label>
+                    <input type="text" id="apiBaseUrl" class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-sky-500 code">
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">API Key</label>
+                    <input type="password" id="apiKey" placeholder="sk-..." class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-sky-500 code">
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">模型名称</label>
+                    <input type="text" id="modelName" class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-sky-500 code">
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-700 flex justify-end gap-2">
+                <button onclick="toggleConfig()" class="px-4 py-2 text-slate-400 hover:text-white transition">取消</button>
+                <button onclick="saveConfig()" class="px-4 py-2 bg-sky-500 hover:bg-sky-600 rounded-lg font-medium transition">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-6">
+        <!-- Input Section -->
+        <div class="gradient-card rounded-xl border border-slate-700 p-5 mb-6">
+            <div class="flex items-center gap-2 mb-4">
+                <span class="text-2xl">🎤</span>
+                <h2 class="font-semibold">告诉我您的出行需求</h2>
+            </div>
+            <div class="flex flex-col md:flex-row gap-4">
+                <div class="flex-1">
+                    <textarea id="userInput" rows="2"
+                        placeholder="例如：帮我订一张明天上午10点从海口到北京的机票"
+                        class="w-full px-4 py-3 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:border-sky-500 text-lg resize-none">帮我订一张明天10点从海口到北京的机票</textarea>
+                </div>
+                <div class="flex gap-2 items-end">
+                    <button id="startBtn" onclick="startBooking()"
+                        class="px-6 py-3 bg-sky-500 hover:bg-sky-600 rounded-lg font-medium transition flex items-center gap-2 disabled:opacity-50">
+                        <span>✈️</span> 开始预订
+                    </button>
+                    <button onclick="resetWorkflow()"
+                        class="px-4 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg transition">
+                        ↺ 重置
+                    </button>
+                </div>
+            </div>
+
+            <!-- 快捷示例 -->
+            <div class="mt-4 flex flex-wrap gap-2">
+                <span class="text-sm text-slate-500">快捷示例：</span>
+                <button onclick="setExample(1)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-sm transition">明天海口→北京 10:00</button>
+                <button onclick="setExample(2)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-sm transition">下午上海→广州 商务舱</button>
+                <button onclick="setExample(3)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-sm transition">后天成都→三亚 2人</button>
+            </div>
+        </div>
+
+        <!-- Two Column Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Skills Panel -->
+            <div class="lg:col-span-2 space-y-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="font-semibold text-slate-300">🔗 Agent Skills 执行链</h2>
+                    <span id="progressText" class="text-sm text-slate-500">0 / 5</span>
+                </div>
+
+                <div id="skillsContainer" class="space-y-3">
+                    <div class="text-center text-slate-500 py-8">
+                        <div class="animate-spin w-8 h-8 border-2 border-slate-600 border-t-sky-500 rounded-full mx-auto mb-3"></div>
+                        正在连接后端服务...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Panel -->
+            <div class="lg:col-span-1">
+                <h2 class="font-semibold text-slate-300 mb-2">📋 系统日志</h2>
+                <div class="bg-slate-950 rounded-xl border border-slate-700 h-[600px] overflow-hidden flex flex-col">
+                    <div class="px-3 py-2 border-b border-slate-800 flex items-center gap-2">
+                        <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+                        <span class="w-3 h-3 bg-yellow-500 rounded-full"></span>
+                        <span class="w-3 h-3 bg-green-500 rounded-full"></span>
+                        <span class="text-xs text-slate-500 ml-2">flight-agent.log</span>
+                    </div>
+                    <div id="logContainer" class="flex-1 overflow-y-auto p-3 code text-xs space-y-1">
+                        <div class="text-slate-500">// 智能机票预订系统启动...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+    /**
+     * ========================================
+     * 智能机票预订系统 - 前端控制器
+     * ========================================
+     */
+
+    // ============ 配置管理 ============
+    const ConfigManager = {
+        defaultConfig: {
+            backendUrl: 'http://localhost:8001',
+            provider: 'openai',
+            baseUrl: 'https://api.openai.com/v1',
+            apiKey: '',
+            model: 'gpt-4o-mini'
+        },
+
+        load() {
+            try {
+                const saved = localStorage.getItem('flight_booking_config');
+                return saved ? { ...this.defaultConfig, ...JSON.parse(saved) } : { ...this.defaultConfig };
+            } catch (e) {
+                return { ...this.defaultConfig };
+            }
+        },
+
+        save(config) {
+            const merged = { ...this.load(), ...config };
+            localStorage.setItem('flight_booking_config', JSON.stringify(merged));
+            return merged;
+        },
+
+        get() {
+            return this.load();
+        }
+    };
+
+    // ============ API 客户端 ============
+    const ApiClient = {
+        getBaseUrl() {
+            return ConfigManager.get().backendUrl;
+        },
+
+        async healthCheck() {
+            const response = await fetch(`${this.getBaseUrl()}/api/flight_booking/health`);
+            if (!response.ok) throw new Error('Backend not available');
+            return response.json();
+        },
+
+        async getSkills() {
+            const response = await fetch(`${this.getBaseUrl()}/api/flight_booking/skills`);
+            if (!response.ok) throw new Error('Failed to fetch skills');
+            return response.json();
+        },
+
+        async runBooking(userRequest, onEvent) {
+            const config = ConfigManager.get();
+
+            const response = await fetch(`${this.getBaseUrl()}/api/flight_booking/booking/run`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_request: userRequest,
+                    config: {
+                        provider: config.provider,
+                        base_url: config.baseUrl,
+                        api_key: config.apiKey,
+                        model: config.model
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Booking failed');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n').filter(line => line.startsWith('data:'));
+
+                for (const line of lines) {
+                    const data = line.slice(5).trim();
+                    if (data === '[DONE]') {
+                        onEvent({ event: 'done' });
+                        continue;
+                    }
+
+                    try {
+                        const event = JSON.parse(data);
+                        onEvent(event);
+                    } catch (e) {}
+                }
+            }
+        }
+    };
+
+    // ============ UI 控制器 ============
+    const UIController = {
+        skills: [],
+        skillMap: {},
+        skillOutputs: {},
+
+        addLog(message, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const log = document.createElement('div');
+            log.className = 'log-entry';
+
+            const time = new Date().toLocaleTimeString();
+            const colors = {
+                info: 'text-sky-400',
+                success: 'text-green-400',
+                warning: 'text-yellow-400',
+                error: 'text-red-400',
+                system: 'text-purple-400',
+                http: 'text-cyan-400'
+            };
+
+            log.innerHTML = `<span class="text-slate-600">[${time}]</span> <span class="${colors[type] || colors.info}">${message}</span>`;
+            container.appendChild(log);
+            container.scrollTop = container.scrollHeight;
+        },
+
+        updateBackendStatus(status, text) {
+            const badge = document.getElementById('backendStatus');
+            const colors = {
+                online: 'bg-green-400',
+                offline: 'bg-red-400',
+                checking: 'bg-yellow-400 pulse-dot'
+            };
+            badge.innerHTML = `<span class="inline-block w-2 h-2 ${colors[status]} rounded-full mr-2"></span>${text}`;
+        },
+
+        renderSkills(skills, workflowOrder) {
+            this.skills = skills;
+            this.skillMap = {};
+            skills.forEach(s => this.skillMap[s.id] = s);
+
+            const container = document.getElementById('skillsContainer');
+            const orderedSkills = workflowOrder.map(id => skills.find(s => s.id === id)).filter(Boolean);
+
+            const iconBgs = ['bg-sky-500/20', 'bg-purple-500/20', 'bg-amber-500/20', 'bg-green-500/20', 'bg-pink-500/20'];
+
+            container.innerHTML = orderedSkills.map((skill, index) => `
+                <div id="skill-${skill.id}" class="skill-card bg-slate-800 rounded-xl border-2 border-slate-700 overflow-hidden">
+                    <div class="p-4 flex items-start gap-3">
+                        <div class="w-12 h-12 rounded-xl ${iconBgs[index % iconBgs.length]} flex items-center justify-center text-2xl flex-shrink-0" id="icon-${skill.id}">
+                            ${skill.icon}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-xs text-slate-500">STEP ${index + 1}</span>
+                                <span id="status-${skill.id}" class="px-2 py-0.5 bg-slate-700 text-slate-400 text-xs rounded">待执行</span>
+                            </div>
+                            <h3 class="font-semibold text-lg">${skill.name}</h3>
+                            <p class="text-sm text-slate-400">${skill.description}</p>
+                        </div>
+                    </div>
+                    <div id="output-${skill.id}" class="hidden border-t border-slate-700 bg-slate-900/50">
+                        <div class="flex items-center justify-between px-4 py-2 bg-slate-800/50 border-b border-slate-700">
+                            <span class="text-xs text-slate-500">📄 执行结果</span>
+                            <button id="copy-btn-${skill.id}" onclick="copySkillOutput('${skill.id}')"
+                                class="copy-btn px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs flex items-center gap-1.5 transition">
+                                <span class="copy-icon">📋</span>
+                                <span class="copy-text">复制</span>
+                            </button>
+                        </div>
+                        <div class="p-4 max-h-[400px] overflow-y-auto">
+                            <div class="stream-text text-sm text-slate-300"></div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        },
+
+        onSkillStart(skillId) {
+            const skill = this.skillMap[skillId];
+            if (!skill) return;
+
+            this.addLog(`▶ 执行: ${skill.name}`, 'system');
+
+            const card = document.getElementById(`skill-${skillId}`);
+            const status = document.getElementById(`status-${skillId}`);
+            const output = document.getElementById(`output-${skillId}`);
+            const icon = document.getElementById(`icon-${skillId}`);
+
+            if (card) card.classList.add('active');
+            if (status) {
+                status.textContent = '执行中...';
+                status.className = 'px-2 py-0.5 bg-sky-500/20 text-sky-400 text-xs rounded';
+            }
+            if (output) {
+                output.classList.remove('hidden');
+                output.querySelector('.stream-text').innerHTML = '<span class="typing-cursor"></span>';
+            }
+            if (icon) {
+                icon.innerHTML = '<div class="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin"></div>';
+            }
+        },
+
+        onSkillStream(skillId, content) {
+            const output = document.getElementById(`output-${skillId}`);
+            if (output) {
+                this.skillOutputs[skillId] = content;
+                const streamTextEl = output.querySelector('.stream-text');
+                streamTextEl.innerHTML = this.formatText(content) + '<span class="typing-cursor"></span>';
+                const scrollContainer = streamTextEl.parentElement;
+                scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            }
+        },
+
+        onSkillComplete(skillId, content) {
+            const skill = this.skillMap[skillId];
+            if (!skill) return;
+
+            this.addLog(`✓ 完成: ${skill.name}`, 'success');
+            this.skillOutputs[skillId] = content;
+
+            const card = document.getElementById(`skill-${skillId}`);
+            const status = document.getElementById(`status-${skillId}`);
+            const output = document.getElementById(`output-${skillId}`);
+            const icon = document.getElementById(`icon-${skillId}`);
+
+            if (card) {
+                card.classList.remove('active');
+                card.classList.add('completed');
+            }
+            if (status) {
+                status.textContent = '已完成';
+                status.className = 'px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded';
+            }
+            if (output) {
+                output.querySelector('.stream-text').innerHTML = this.formatText(content);
+            }
+            if (icon) {
+                icon.innerHTML = skill.icon;
+            }
+        },
+
+        onSkillError(skillId, error) {
+            this.addLog(`✗ 错误: ${error}`, 'error');
+
+            const card = document.getElementById(`skill-${skillId}`);
+            const status = document.getElementById(`status-${skillId}`);
+            const icon = document.getElementById(`icon-${skillId}`);
+            const skill = this.skillMap[skillId];
+
+            if (card) card.classList.remove('active');
+            if (status) {
+                status.textContent = '失败';
+                status.className = 'px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded';
+            }
+            if (icon && skill) icon.innerHTML = skill.icon;
+        },
+
+        updateProgress(current, total) {
+            document.getElementById('progressText').textContent = `${current} / ${total}`;
+        },
+
+        formatText(text) {
+            if (!text) return '';
+            return text
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/```[\s\S]*?```/g, (match) => {
+                    return `<div class="bg-slate-800 rounded p-2 my-2 text-xs overflow-x-auto">${match.slice(3, -3)}</div>`;
+                })
+                .replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-300">$1</strong>')
+                .replace(/^### (.*$)/gm, '<div class="text-purple-400 font-bold mt-3 mb-1">$1</div>')
+                .replace(/^## (.*$)/gm, '<div class="text-sky-400 font-bold text-lg mt-4 mb-2">$1</div>')
+                .replace(/^# (.*$)/gm, '<div class="text-pink-400 font-bold text-xl mt-4 mb-2">$1</div>')
+                .replace(/\|(.+)\|/g, (match) => `<span class="text-slate-400">${match}</span>`)
+                .replace(/\n/g, '<br>');
+        },
+
+        setLoading(loading) {
+            const btn = document.getElementById('startBtn');
+            if (loading) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="animate-spin">◌</span> 处理中...';
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = '<span>✈️</span> 开始预订';
+            }
+        }
+    };
+
+    // ============ 主控制器 ============
+    const App = {
+        completedSkills: 0,
+        totalSkills: 5,
+
+        async init() {
+            UIController.addLog('智能机票预订系统初始化...', 'system');
+            this.loadConfigToForm();
+            await this.checkBackend();
+        },
+
+        async checkBackend() {
+            UIController.updateBackendStatus('checking', '检测中...');
+            UIController.addLog(`GET ${ConfigManager.get().backendUrl}/api/flight_booking/health`, 'http');
+
+            try {
+                const health = await ApiClient.healthCheck();
+                UIController.updateBackendStatus('online', '服务在线');
+                UIController.addLog(`后端状态: ${JSON.stringify(health)}`, 'success');
+                await this.loadSkills();
+            } catch (error) {
+                UIController.updateBackendStatus('offline', '服务离线');
+                UIController.addLog(`连接失败: ${error.message}`, 'error');
+                UIController.addLog('请启动后端: python -m flight_booking.main', 'warning');
+            }
+        },
+
+        async loadSkills() {
+            UIController.addLog(`GET ${ConfigManager.get().backendUrl}/api/flight_booking/skills`, 'http');
+
+            try {
+                const data = await ApiClient.getSkills();
+                UIController.addLog(`加载了 ${data.skills.length} 个 Skills`, 'success');
+                UIController.renderSkills(data.skills, data.workflow_order);
+                this.totalSkills = data.skills.length;
+            } catch (error) {
+                UIController.addLog(`加载失败: ${error.message}`, 'error');
+            }
+        },
+
+        loadConfigToForm() {
+            const config = ConfigManager.get();
+            document.getElementById('backendUrl').value = config.backendUrl || 'http://localhost:8001';
+            document.getElementById('providerSelect').value = config.provider || 'openai';
+            document.getElementById('apiBaseUrl').value = config.baseUrl || '';
+            document.getElementById('apiKey').value = config.apiKey || '';
+            document.getElementById('modelName').value = config.model || '';
+        }
+    };
+
+    // ============ 全局函数 ============
+    const providerDefaults = {
+        openai: { url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+        zhipu: { url: 'https://open.bigmodel.cn/api/flight_booking/paas/v4', model: 'glm-4-flash' },
+        deepseek: { url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+        moonshot: { url: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
+        qwen: { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-turbo' }
+    };
+
+    function toggleConfig() {
+        document.getElementById('configModal').classList.toggle('hidden');
+        App.loadConfigToForm();
+    }
+
+    function updateProviderDefaults() {
+        const provider = document.getElementById('providerSelect').value;
+        const defaults = providerDefaults[provider];
+        if (defaults) {
+            document.getElementById('apiBaseUrl').value = defaults.url;
+            document.getElementById('modelName').value = defaults.model;
+        }
+    }
+
+    function saveConfig() {
+        const config = {
+            backendUrl: document.getElementById('backendUrl').value.replace(/\/$/, ''),
+            provider: document.getElementById('providerSelect').value,
+            baseUrl: document.getElementById('apiBaseUrl').value,
+            apiKey: document.getElementById('apiKey').value,
+            model: document.getElementById('modelName').value
+        };
+        ConfigManager.save(config);
+        toggleConfig();
+        UIController.addLog(`配置已保存: ${config.provider}/${config.model}`, 'success');
+        App.checkBackend();
+    }
+
+    function setExample(num) {
+        const examples = {
+            1: '帮我订一张明天上午10点从海口到北京的机票',
+            2: '我想订今天下午从上海到广州的商务舱机票',
+            3: '帮我订2张后天从成都到三亚的机票，要上午的航班'
+        };
+        document.getElementById('userInput').value = examples[num] || examples[1];
+    }
+
+    async function startBooking() {
+        const userRequest = document.getElementById('userInput').value.trim();
+        if (!userRequest) {
+            alert('请输入您的订票需求');
+            return;
+        }
+
+        const config = ConfigManager.get();
+        if (!config.apiKey) {
+            alert('请先配置 API Key');
+            toggleConfig();
+            return;
+        }
+
+        UIController.setLoading(true);
+        UIController.addLog('━━━ 开始机票预订工作流 ━━━', 'system');
+        UIController.addLog(`用户需求: ${userRequest}`, 'info');
+        UIController.addLog(`POST ${config.backendUrl}/api/flight_booking/booking/run`, 'http');
+
+        App.completedSkills = 0;
+
+        try {
+            await ApiClient.runBooking(userRequest, (event) => {
+                switch (event.event) {
+                    case 'workflow:start':
+                        UIController.addLog(`工作流启动`, 'system');
+                        break;
+
+                    case 'skill:start':
+                        UIController.onSkillStart(event.skill_id);
+                        break;
+
+                    case 'skill:stream':
+                        UIController.onSkillStream(event.skill_id, event.data?.content);
+                        break;
+
+                    case 'skill:complete':
+                        UIController.onSkillComplete(event.skill_id, event.data?.content);
+                        App.completedSkills++;
+                        UIController.updateProgress(App.completedSkills, App.totalSkills);
+                        break;
+
+                    case 'skill:error':
+                        UIController.onSkillError(event.skill_id, event.data?.error);
+                        break;
+
+                    case 'workflow:complete':
+                        UIController.addLog('━━━ 🎉 预订完成！━━━', 'success');
+                        UIController.setLoading(false);
+                        break;
+
+                    case 'workflow:error':
+                        UIController.addLog(`工作流错误: ${event.data?.error}`, 'error');
+                        UIController.setLoading(false);
+                        break;
+
+                    case 'done':
+                        UIController.setLoading(false);
+                        break;
+                }
+            });
+        } catch (error) {
+            UIController.addLog(`预订失败: ${error.message}`, 'error');
+            UIController.setLoading(false);
+        }
+    }
+
+    function resetWorkflow() {
+        App.loadSkills();
+        App.completedSkills = 0;
+        UIController.skillOutputs = {};
+        UIController.updateProgress(0, App.totalSkills);
+        document.getElementById('logContainer').innerHTML = '<div class="text-slate-500">// 系统已重置...</div>';
+        UIController.addLog('工作流已重置', 'warning');
+    }
+
+    async function copySkillOutput(skillId) {
+        const content = UIController.skillOutputs[skillId];
+        if (!content) return;
+
+        const btn = document.getElementById(`copy-btn-${skillId}`);
+
+        try {
+            await navigator.clipboard.writeText(content);
+
+            if (btn) {
+                btn.classList.add('copied');
+                btn.querySelector('.copy-icon').textContent = '✅';
+                btn.querySelector('.copy-text').textContent = '已复制';
+
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.querySelector('.copy-icon').textContent = '📋';
+                    btn.querySelector('.copy-text').textContent = '复制';
+                }, 2000);
+            }
+
+            UIController.addLog(`📋 已复制: ${UIController.skillMap[skillId]?.name}`, 'success');
+        } catch (error) {
+            UIController.addLog(`复制失败: ${error.message}`, 'error');
+        }
+    }
+
+    // ============ 启动 ============
+    document.addEventListener('DOMContentLoaded', () => App.init());
+    </script>
+</body>
+</html>

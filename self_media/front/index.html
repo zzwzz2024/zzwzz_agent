@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Skills - 公众号文章发布系统 (Python后端版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Noto Sans SC', sans-serif; }
+        code, .code { font-family: 'Fira Code', monospace; }
+
+        .gradient-bg { background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%); }
+        .gradient-accent { background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); }
+
+        .skill-card { transition: all 0.3s ease; }
+        .skill-card:hover { transform: translateY(-2px); }
+        .skill-card.active { border-color: #3b82f6; box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
+        .skill-card.completed { border-color: #10b981; }
+
+        .typing-cursor::after {
+            content: '▊';
+            animation: blink 0.8s infinite;
+            color: #3b82f6;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .log-entry { animation: slideIn 0.2s ease; }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .stream-text { white-space: pre-wrap; line-height: 1.8; }
+
+        .pulse-dot {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .copy-btn {
+            transition: all 0.2s ease;
+        }
+        .copy-btn:hover {
+            transform: scale(1.05);
+        }
+        .copy-btn.copied {
+            background: #10b981 !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+
+    <!-- Header -->
+    <header class="gradient-bg border-b border-slate-700">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 gradient-accent rounded-lg flex items-center justify-center">
+                        <span class="text-xl">🤖</span>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold">Agent Skills System</h1>
+                        <p class="text-slate-400 text-xs">Python FastAPI 后端 + SSE 流式输出</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="backendStatus" class="px-3 py-1.5 bg-slate-700 rounded-lg text-sm">
+                        <span class="inline-block w-2 h-2 bg-yellow-400 rounded-full mr-2"></span>
+                        检测中...
+                    </span>
+                    <button onclick="toggleConfig()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition">
+                        ⚙️ API配置
+                    </button>
+                    <button onclick="testConnection()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition">
+                        🔗 测试连接
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Config Modal -->
+    <div id="configModal" class="fixed inset-0 bg-black/70 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg border border-slate-700">
+            <div class="p-4 border-b border-slate-700 flex items-center justify-between">
+                <h3 class="text-lg font-bold">⚙️ 后端 & API 配置</h3>
+                <button onclick="toggleConfig()" class="text-slate-400 hover:text-white text-xl">×</button>
+            </div>
+            <div class="p-4 space-y-4">
+                <!-- 后端地址 -->
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">后端服务地址</label>
+                    <input type="text" id="backendUrl" value="http://localhost:8001"
+                        class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-blue-500 code">
+                    <p class="text-xs text-slate-500 mt-1">FastAPI 服务地址，默认 http://localhost:8001</p>
+                </div>
+
+                <hr class="border-slate-700">
+
+                <!-- LLM 配置 -->
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">模型提供商</label>
+                    <select id="providerSelect" onchange="updateProviderDefaults()" class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-blue-500">
+                        <option value="openai">OpenAI</option>
+                        <option value="zhipu">智谱AI (GLM)</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="moonshot">Moonshot (Kimi)</option>
+                        <option value="qwen">通义千问</option>
+                        <option value="custom">自定义</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">API Base URL</label>
+                    <input type="text" id="apiBaseUrl" class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-blue-500 code">
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">API Key</label>
+                    <input type="password" id="apiKey" placeholder="sk-..." class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-blue-500 code">
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">模型名称</label>
+                    <input type="text" id="modelName" class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-blue-500 code">
+                </div>
+
+                <div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-xs text-blue-300">
+                    💡 API配置会随请求发送到后端，也可以在后端 .env 文件中预配置
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-700 flex justify-between">
+                <button onclick="validateConfig()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition">
+                    🔍 验证配置
+                </button>
+                <div class="flex gap-2">
+                    <button onclick="toggleConfig()" class="px-4 py-2 text-slate-400 hover:text-white transition">取消</button>
+                    <button onclick="saveConfig()" class="px-4 py-2 gradient-accent rounded-lg font-medium hover:opacity-90 transition">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-6">
+        <!-- Input Section -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 p-4 mb-6">
+            <div class="flex items-center gap-4">
+                <div class="flex-1">
+                    <label class="block text-sm text-slate-400 mb-2">📝 输入文章主题</label>
+                    <input type="text" id="topicInput"
+                        placeholder="例如：2024年AI Agent技术趋势分析"
+                        value="2024年AI Agent技术发展趋势与实战应用"
+                        class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-blue-500 text-lg">
+                </div>
+                <div class="flex gap-2 pt-6">
+                    <button id="startBtn" onclick="startWorkflow()"
+                        class="px-6 py-3 gradient-accent rounded-lg font-medium hover:opacity-90 transition flex items-center gap-2 disabled:opacity-50">
+                        <span>▶</span> 执行工作流
+                    </button>
+                    <button onclick="resetWorkflow()"
+                        class="px-4 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg transition">
+                        ↺ 重置
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Two Column Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Skills Panel -->
+            <div class="lg:col-span-2 space-y-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="font-semibold text-slate-300">🔗 Skill 执行链 (后端驱动)</h2>
+                    <span id="progressText" class="text-sm text-slate-500">0 / 6</span>
+                </div>
+
+                <div id="skillsContainer" class="space-y-3">
+                    <!-- Skills will be rendered here -->
+                    <div class="text-center text-slate-500 py-8">
+                        <div class="animate-spin w-8 h-8 border-2 border-slate-600 border-t-blue-500 rounded-full mx-auto mb-3"></div>
+                        正在从后端加载 Skills...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Panel -->
+            <div class="lg:col-span-1">
+                <h2 class="font-semibold text-slate-300 mb-2">📋 系统日志</h2>
+                <div class="bg-slate-950 rounded-xl border border-slate-700 h-[600px] overflow-hidden flex flex-col">
+                    <div class="px-3 py-2 border-b border-slate-800 flex items-center gap-2">
+                        <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+                        <span class="w-3 h-3 bg-yellow-500 rounded-full"></span>
+                        <span class="w-3 h-3 bg-green-500 rounded-full"></span>
+                        <span class="text-xs text-slate-500 ml-2">console → backend</span>
+                    </div>
+                    <div id="logContainer" class="flex-1 overflow-y-auto p-3 code text-xs space-y-1">
+                        <div class="text-slate-500">// Connecting to Python Backend...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ============================================== -->
+    <!-- API Client - 后端接口调用                       -->
+    <!-- ============================================== -->
+    <script>
+    /**
+     * ========================================
+     * 前端 API 客户端
+     * 负责与 Python FastAPI 后端通信
+     * ========================================
+     */
+
+    // ============ 配置管理 ============
+    const ConfigManager = {
+        defaultConfig: {
+            backendUrl: 'http://localhost:8001',
+            provider: 'openai',
+            baseUrl: 'https://api.openai.com/v1',
+            apiKey: '',
+            model: 'gpt-4o-mini'
+        },
+
+        load() {
+            try {
+                const saved = localStorage.getItem('agent_skills_config_v2');
+                return saved ? { ...this.defaultConfig, ...JSON.parse(saved) } : { ...this.defaultConfig };
+            } catch (e) {
+                return { ...this.defaultConfig };
+            }
+        },
+
+        save(config) {
+            const merged = { ...this.load(), ...config };
+            localStorage.setItem('agent_skills_config_v2', JSON.stringify(merged));
+            return merged;
+        },
+
+        get() {
+            return this.load();
+        },
+
+        isConfigured() {
+            const config = this.load();
+            return Boolean(config.apiKey && config.backendUrl);
+        }
+    };
+
+    // ============ API 客户端 ============
+    const ApiClient = {
+        getBaseUrl() {
+            return ConfigManager.get().backendUrl;
+        },
+
+        // 获取健康状态
+        async healthCheck() {
+            const response = await fetch(`${this.getBaseUrl()}/api/self_media/health`);
+            if (!response.ok) throw new Error('Backend not available');
+            return response.json();
+        },
+
+        // 获取所有 Skills
+        async getSkills() {
+            const response = await fetch(`${this.getBaseUrl()}/api/self_media/skills`);
+            if (!response.ok) throw new Error('Failed to fetch skills');
+            return response.json();
+        },
+
+        // 验证 LLM 配置
+        async validateConfig(config) {
+            const response = await fetch(`${this.getBaseUrl()}/api/self_media/config/validate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    provider: config.provider,
+                    base_url: config.baseUrl,
+                    api_key: config.apiKey,
+                    model: config.model
+                })
+            });
+            return response.json();
+        },
+
+        // 运行工作流 (SSE 流式)
+        async runWorkflow(topic, onEvent) {
+            const config = ConfigManager.get();
+
+            const response = await fetch(`${this.getBaseUrl()}/api/self_media/workflow/run`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    topic: topic,
+                    config: {
+                        provider: config.provider,
+                        base_url: config.baseUrl,
+                        api_key: config.apiKey,
+                        model: config.model
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Workflow failed');
+            }
+
+            // 处理 SSE 流
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n').filter(line => line.startsWith('data:'));
+
+                for (const line of lines) {
+                    const data = line.slice(5).trim();
+                    if (data === '[DONE]') {
+                        onEvent({ event: 'done' });
+                        continue;
+                    }
+
+                    try {
+                        const event = JSON.parse(data);
+                        onEvent(event);
+                    } catch (e) {
+                        // Skip parse errors
+                    }
+                }
+            }
+        }
+    };
+
+    // ============ UI 控制器 ============
+    const UIController = {
+        skills: [],
+        skillMap: {},
+        skillOutputs: {},  // 存储每个skill的原始输出内容
+
+        addLog(message, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const log = document.createElement('div');
+            log.className = 'log-entry';
+
+            const time = new Date().toLocaleTimeString();
+            const colors = {
+                info: 'text-blue-400',
+                success: 'text-green-400',
+                warning: 'text-yellow-400',
+                error: 'text-red-400',
+                system: 'text-purple-400',
+                http: 'text-cyan-400'
+            };
+
+            log.innerHTML = `<span class="text-slate-600">[${time}]</span> <span class="${colors[type] || colors.info}">${message}</span>`;
+            container.appendChild(log);
+            container.scrollTop = container.scrollHeight;
+        },
+
+        updateBackendStatus(status, text) {
+            const badge = document.getElementById('backendStatus');
+            const colors = {
+                online: 'bg-green-400',
+                offline: 'bg-red-400',
+                checking: 'bg-yellow-400 pulse-dot'
+            };
+            badge.innerHTML = `<span class="inline-block w-2 h-2 ${colors[status]} rounded-full mr-2"></span>${text}`;
+        },
+
+        renderSkills(skills, workflowOrder) {
+            this.skills = skills;
+            this.skillMap = {};
+            skills.forEach(s => this.skillMap[s.id] = s);
+
+            const container = document.getElementById('skillsContainer');
+            const orderedSkills = workflowOrder.map(id => skills.find(s => s.id === id)).filter(Boolean);
+
+            container.innerHTML = orderedSkills.map((skill, index) => `
+                <div id="skill-${skill.id}" class="skill-card bg-slate-800 rounded-xl border-2 border-slate-700 overflow-hidden">
+                    <div class="p-4 flex items-start gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center text-xl flex-shrink-0" id="icon-${skill.id}">
+                            ${skill.icon}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-xs text-slate-500">SKILL ${index + 1}</span>
+                                <span id="status-${skill.id}" class="px-2 py-0.5 bg-slate-700 text-slate-400 text-xs rounded">待执行</span>
+                            </div>
+                            <h3 class="font-semibold">${skill.name}</h3>
+                            <p class="text-sm text-slate-400">${skill.description}</p>
+                        </div>
+                    </div>
+                    <div id="output-${skill.id}" class="hidden border-t border-slate-700 bg-slate-900/50">
+                        <div class="flex items-center justify-between px-4 py-2 bg-slate-800/50 border-b border-slate-700">
+                            <span class="text-xs text-slate-500">输出结果</span>
+                            <button id="copy-btn-${skill.id}" onclick="copySkillOutput('${skill.id}')"
+                                class="copy-btn px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs flex items-center gap-1.5 transition">
+                                <span class="copy-icon">📋</span>
+                                <span class="copy-text">复制</span>
+                            </button>
+                        </div>
+                        <div class="p-4 max-h-96 overflow-y-auto">
+                            <div class="stream-text text-sm text-slate-300"></div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        },
+
+        onSkillStart(skillId) {
+            const skill = this.skillMap[skillId];
+            if (!skill) return;
+
+            this.addLog(`▶ 开始执行: ${skill.name}`, 'system');
+
+            const card = document.getElementById(`skill-${skillId}`);
+            const status = document.getElementById(`status-${skillId}`);
+            const output = document.getElementById(`output-${skillId}`);
+            const icon = document.getElementById(`icon-${skillId}`);
+
+            if (card) card.classList.add('active');
+            if (status) {
+                status.textContent = '执行中...';
+                status.className = 'px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded';
+            }
+            if (output) {
+                output.classList.remove('hidden');
+                output.querySelector('.stream-text').innerHTML = '<span class="typing-cursor"></span>';
+            }
+            if (icon) {
+                icon.innerHTML = '<div class="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>';
+            }
+        },
+
+        onSkillStream(skillId, content) {
+            const output = document.getElementById(`output-${skillId}`);
+            if (output) {
+                this.skillOutputs[skillId] = content;  // 存储原始内容
+                const streamTextEl = output.querySelector('.stream-text');
+                streamTextEl.innerHTML = this.formatText(content) + '<span class="typing-cursor"></span>';
+                // 滚动到底部
+                const scrollContainer = streamTextEl.parentElement;
+                scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            }
+        },
+
+        onSkillComplete(skillId, content) {
+            const skill = this.skillMap[skillId];
+            if (!skill) return;
+
+            this.addLog(`✓ 完成: ${skill.name}`, 'success');
+
+            // 存储原始内容用于复制
+            this.skillOutputs[skillId] = content;
+
+            const card = document.getElementById(`skill-${skillId}`);
+            const status = document.getElementById(`status-${skillId}`);
+            const output = document.getElementById(`output-${skillId}`);
+            const icon = document.getElementById(`icon-${skillId}`);
+
+            if (card) {
+                card.classList.remove('active');
+                card.classList.add('completed');
+            }
+            if (status) {
+                status.textContent = '已完成';
+                status.className = 'px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded';
+            }
+            if (output) {
+                output.querySelector('.stream-text').innerHTML = this.formatText(content);
+            }
+            if (icon) {
+                icon.innerHTML = skill.icon;
+            }
+        },
+
+        onSkillError(skillId, error) {
+            this.addLog(`✗ 错误: ${error}`, 'error');
+
+            const card = document.getElementById(`skill-${skillId}`);
+            const status = document.getElementById(`status-${skillId}`);
+            const icon = document.getElementById(`icon-${skillId}`);
+            const skill = this.skillMap[skillId];
+
+            if (card) card.classList.remove('active');
+            if (status) {
+                status.textContent = '失败';
+                status.className = 'px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded';
+            }
+            if (icon && skill) {
+                icon.innerHTML = skill.icon;
+            }
+        },
+
+        updateProgress(current, total) {
+            document.getElementById('progressText').textContent = `${current} / ${total}`;
+        },
+
+        formatText(text) {
+            if (!text) return '';
+            return text
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/^### (.*$)/gm, '<strong class="text-blue-400">$1</strong>')
+                .replace(/^## (.*$)/gm, '<strong class="text-purple-400 text-lg">$1</strong>')
+                .replace(/^# (.*$)/gm, '<strong class="text-pink-400 text-xl">$1</strong>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
+        },
+
+        setLoading(loading) {
+            const btn = document.getElementById('startBtn');
+            if (loading) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="animate-spin">◌</span> 执行中...';
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = '<span>▶</span> 执行工作流';
+            }
+        }
+    };
+
+    // ============ 主控制器 ============
+    const App = {
+        completedSkills: 0,
+        totalSkills: 5,
+
+        async init() {
+            UIController.addLog('初始化前端应用...', 'system');
+            this.loadConfigToForm();
+            await this.checkBackend();
+        },
+
+        async checkBackend() {
+            UIController.updateBackendStatus('checking', '检测中...');
+            UIController.addLog(`GET ${ConfigManager.get().backendUrl}/api/self_media/health`, 'http');
+
+            try {
+                const health = await ApiClient.healthCheck();
+                UIController.updateBackendStatus('online', '后端在线');
+                UIController.addLog(`后端状态: ${JSON.stringify(health)}`, 'success');
+
+                // 加载 Skills
+                await this.loadSkills();
+            } catch (error) {
+                UIController.updateBackendStatus('offline', '后端离线');
+                UIController.addLog(`后端连接失败: ${error.message}`, 'error');
+                UIController.addLog('请确保 Python 后端已启动: python -m backend.main', 'warning');
+            }
+        },
+
+        async loadSkills() {
+            UIController.addLog(`GET ${ConfigManager.get().backendUrl}/api/self_media/skills`, 'http');
+
+            try {
+                const data = await ApiClient.getSkills();
+                UIController.addLog(`加载了 ${data.skills.length} 个 Skills`, 'success');
+                UIController.renderSkills(data.skills, data.workflow_order);
+                this.totalSkills = data.skills.length;
+            } catch (error) {
+                UIController.addLog(`加载 Skills 失败: ${error.message}`, 'error');
+            }
+        },
+
+        loadConfigToForm() {
+            const config = ConfigManager.get();
+            document.getElementById('backendUrl').value = config.backendUrl || 'http://localhost:8001';
+            document.getElementById('providerSelect').value = config.provider || 'openai';
+            document.getElementById('apiBaseUrl').value = config.baseUrl || '';
+            document.getElementById('apiKey').value = config.apiKey || '';
+            document.getElementById('modelName').value = config.model || '';
+        }
+    };
+
+    // ============ 全局函数 ============
+    const providerDefaults = {
+        openai: { url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+        zhipu: { url: 'https://open.bigmodel.cn/api/self_media/paas/v4', model: 'glm-4-flash' },
+        deepseek: { url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+        moonshot: { url: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
+        qwen: { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-turbo' },
+        custom: { url: '', model: '' }
+    };
+
+    function toggleConfig() {
+        document.getElementById('configModal').classList.toggle('hidden');
+        App.loadConfigToForm();
+    }
+
+    function updateProviderDefaults() {
+        const provider = document.getElementById('providerSelect').value;
+        const defaults = providerDefaults[provider];
+        document.getElementById('apiBaseUrl').value = defaults.url;
+        document.getElementById('modelName').value = defaults.model;
+    }
+
+    function saveConfig() {
+        const config = {
+            backendUrl: document.getElementById('backendUrl').value.replace(/\/$/, ''),
+            provider: document.getElementById('providerSelect').value,
+            baseUrl: document.getElementById('apiBaseUrl').value,
+            apiKey: document.getElementById('apiKey').value,
+            model: document.getElementById('modelName').value
+        };
+        ConfigManager.save(config);
+        toggleConfig();
+        UIController.addLog(`配置已保存: ${config.provider}/${config.model}`, 'success');
+        App.checkBackend();
+    }
+
+    async function validateConfig() {
+        const config = {
+            provider: document.getElementById('providerSelect').value,
+            baseUrl: document.getElementById('apiBaseUrl').value,
+            apiKey: document.getElementById('apiKey').value,
+            model: document.getElementById('modelName').value
+        };
+
+        UIController.addLog('POST /api/self_media/config/validate', 'http');
+
+        try {
+            const result = await ApiClient.validateConfig(config);
+            if (result.valid) {
+                UIController.addLog(`✓ 配置验证成功: ${result.message}`, 'success');
+                alert('✅ 配置验证成功！');
+            } else {
+                UIController.addLog(`✗ 配置验证失败: ${result.message}`, 'error');
+                alert('❌ 配置验证失败: ' + result.message);
+            }
+        } catch (error) {
+            UIController.addLog(`验证请求失败: ${error.message}`, 'error');
+            alert('请求失败: ' + error.message);
+        }
+    }
+
+    async function testConnection() {
+        await App.checkBackend();
+    }
+
+    async function startWorkflow() {
+        const topic = document.getElementById('topicInput').value.trim();
+        if (!topic) {
+            alert('请输入文章主题');
+            return;
+        }
+
+        const config = ConfigManager.get();
+        if (!config.apiKey) {
+            alert('请先配置 API Key');
+            toggleConfig();
+            return;
+        }
+
+        UIController.setLoading(true);
+        UIController.addLog('━━━ 开始执行工作流 ━━━', 'system');
+        UIController.addLog(`主题: ${topic}`, 'info');
+        UIController.addLog(`POST ${config.backendUrl}/api/self_media/workflow/run`, 'http');
+
+        App.completedSkills = 0;
+
+        try {
+            await ApiClient.runWorkflow(topic, (event) => {
+                // 处理后端 SSE 事件
+                switch (event.event) {
+                    case 'workflow:start':
+                        UIController.addLog(`工作流启动: ${event.data?.topic}`, 'system');
+                        break;
+
+                    case 'skill:start':
+                        UIController.onSkillStart(event.skill_id);
+                        break;
+
+                    case 'skill:stream':
+                        UIController.onSkillStream(event.skill_id, event.data?.content);
+                        break;
+
+                    case 'skill:complete':
+                        UIController.onSkillComplete(event.skill_id, event.data?.content);
+                        App.completedSkills++;
+                        UIController.updateProgress(App.completedSkills, App.totalSkills);
+                        break;
+
+                    case 'skill:error':
+                        UIController.onSkillError(event.skill_id, event.data?.error);
+                        break;
+
+                    case 'workflow:complete':
+                        UIController.addLog('━━━ 工作流执行完成 ━━━', 'success');
+                        UIController.setLoading(false);
+                        break;
+
+                    case 'workflow:error':
+                        UIController.addLog(`工作流错误: ${event.data?.error}`, 'error');
+                        UIController.setLoading(false);
+                        break;
+
+                    case 'error':
+                        UIController.addLog(`错误: ${event.data?.error}`, 'error');
+                        UIController.setLoading(false);
+                        break;
+
+                    case 'done':
+                        UIController.addLog('SSE 流结束', 'info');
+                        UIController.setLoading(false);
+                        break;
+                }
+            });
+        } catch (error) {
+            UIController.addLog(`工作流失败: ${error.message}`, 'error');
+            UIController.setLoading(false);
+        }
+    }
+
+    function resetWorkflow() {
+        // 重新加载 Skills
+        App.loadSkills();
+        App.completedSkills = 0;
+        UIController.skillOutputs = {};  // 清空存储的输出
+        UIController.updateProgress(0, App.totalSkills);
+        document.getElementById('logContainer').innerHTML = '<div class="text-slate-500">// 系统已重置，等待执行...</div>';
+        UIController.addLog('工作流已重置', 'warning');
+    }
+
+    // 复制Skill输出内容
+    async function copySkillOutput(skillId) {
+        const content = UIController.skillOutputs[skillId];
+        if (!content) {
+            UIController.addLog(`复制失败: ${skillId} 暂无内容`, 'warning');
+            return;
+        }
+
+        const btn = document.getElementById(`copy-btn-${skillId}`);
+
+        try {
+            await navigator.clipboard.writeText(content);
+
+            // 更新按钮状态
+            if (btn) {
+                btn.classList.add('copied');
+                btn.querySelector('.copy-icon').textContent = '✅';
+                btn.querySelector('.copy-text').textContent = '已复制';
+
+                // 2秒后恢复
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.querySelector('.copy-icon').textContent = '📋';
+                    btn.querySelector('.copy-text').textContent = '复制';
+                }, 2000);
+            }
+
+            const skill = UIController.skillMap[skillId];
+            UIController.addLog(`📋 已复制: ${skill?.name || skillId} (${content.length} 字符)`, 'success');
+
+        } catch (error) {
+            // 降级方案：使用 textarea
+            const textarea = document.createElement('textarea');
+            textarea.value = content;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+
+            try {
+                document.execCommand('copy');
+                if (btn) {
+                    btn.classList.add('copied');
+                    btn.querySelector('.copy-icon').textContent = '✅';
+                    btn.querySelector('.copy-text').textContent = '已复制';
+
+                    setTimeout(() => {
+                        btn.classList.remove('copied');
+                        btn.querySelector('.copy-icon').textContent = '📋';
+                        btn.querySelector('.copy-text').textContent = '复制';
+                    }, 2000);
+                }
+                const skill = UIController.skillMap[skillId];
+                UIController.addLog(`📋 已复制: ${skill?.name || skillId} (${content.length} 字符)`, 'success');
+            } catch (e) {
+                UIController.addLog(`复制失败: ${e.message}`, 'error');
+            }
+
+            document.body.removeChild(textarea);
+        }
+    }
+
+    // ============ 启动 ============
+    document.addEventListener('DOMContentLoaded', () => {
+        App.init();
+    });
+    </script>
+</body>
+</html>
